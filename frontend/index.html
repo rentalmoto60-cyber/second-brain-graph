@@ -72,14 +72,20 @@
     <ul id="inbox-list" class="inbox-list"></ul>
   </div>
 
-  <!-- FAB -->
-  <button id="fab" class="fab" title="Добавить мысль">＋</button>
+  <!-- Mic FAB + text fallback -->
+  <button id="fab-mic" class="fab" title="Записать мысль" data-state="idle">
+    <span class="mic-glyph">🎤</span>
+  </button>
+  <button id="fab-text" class="fab fab-secondary" title="Ввести текстом">T</button>
 
-  <!-- Text input row -->
+  <!-- Text input row (fallback) -->
   <div id="input-row" class="input-row hidden">
     <input id="input-field" type="text" placeholder="Что у тебя в голове?" />
     <button id="input-send" class="send-btn">→</button>
   </div>
+
+  <!-- Processing toast -->
+  <div id="toast" class="toast hidden"></div>
 
   <!-- Node card sheet -->
   <div id="sheet" class="sheet hidden">

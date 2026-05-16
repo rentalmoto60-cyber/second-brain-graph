@@ -5,13 +5,22 @@ import os
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
+
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from brain.graph import BrainGraph
+from brain.parser import parse_thought, parsed_to_node_fields
 from brain.storage import Storage
 from brain.visualizer import export_graph
+from brain.voice import VoiceUnavailableError, transcribe
 
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -165,6 +174,41 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @app.get("/api/audit")
     async def audit(limit: int = 100):
         return g().get_audit_log(limit=limit)
+
+    # ---------- voice + parser ----------
+
+    @app.post("/api/voice")
+    async def voice(audio: UploadFile = File(...)):
+        data = await audio.read()
+        try:
+            text = transcribe(data, filename=audio.filename or "audio.webm")
+        except VoiceUnavailableError as e:
+            raise HTTPException(status_code=503, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        return {"text": text}
+
+    @app.post("/api/thoughts")
+    async def thoughts(payload: dict):
+        text = (payload.get("text") or "").strip()
+        if not text:
+            raise HTTPException(status_code=400, detail="text must be a non-empty string")
+        try:
+            parsed = parse_thought(text)
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"parser failed: {e}")
+        node_type, fields = parsed_to_node_fields(parsed)
+        try:
+            nid = g().add_node(node_type, **fields)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        g().save()
+        await notify()
+        return {
+            "node": g().get_node(nid),
+            "parsed": parsed,
+            "needs_review": fields["status"] == "inbox",
+        }
 
     # ---------- WebSocket ----------
 

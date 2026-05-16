@@ -133,11 +133,48 @@ body { overflow: hidden; }
 /* ---------- FAB / input ---------- */
 .fab {
   position: fixed; bottom: calc(30vh + 16px); right: 16px;
-  width: 56px; height: 56px; border-radius: 50%;
+  width: 64px; height: 64px; border-radius: 50%;
   background: var(--accent); color: #0a0e13;
-  border: none; font-size: 28px; font-weight: 300;
+  border: none; font-size: 26px; font-weight: 300;
   box-shadow: 0 6px 20px rgba(133,183,235,0.35);
   cursor: pointer; z-index: 25;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.2s, transform 0.15s;
+}
+.fab:active { transform: scale(0.94); }
+.fab.fab-secondary {
+  right: 92px; width: 44px; height: 44px;
+  bottom: calc(30vh + 26px);
+  background: var(--bg-elev); color: var(--fg);
+  font-size: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+#fab-mic[data-state="recording"] {
+  background: var(--danger); color: #fff;
+  animation: pulse-record 1s ease-in-out infinite;
+}
+#fab-mic[data-state="processing"] {
+  background: var(--bg-elev); color: var(--fg-mute);
+  pointer-events: none;
+}
+#fab-mic[data-state="processing"] .mic-glyph {
+  display: inline-block;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes pulse-record {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(231,76,60,0.6); }
+  50%      { box-shadow: 0 0 0 14px rgba(231,76,60,0); }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(30vh + 100px);
+  transform: translateX(-50%);
+  background: var(--bg-elev); color: var(--fg);
+  padding: 10px 18px; border-radius: 20px;
+  border: 1px solid var(--border);
+  font-size: 13px; z-index: 80;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5);
 }
 .input-row {
   position: fixed; left: 16px; right: 16px;

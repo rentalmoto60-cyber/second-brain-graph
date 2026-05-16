@@ -2,6 +2,7 @@ import { api, connectWS } from "./api.js";
 import { Brain3D } from "./brain3d.js";
 import { Brain2D } from "./brain2d.js";
 import { runSplash } from "./splash.js";
+import { VoiceRecorder, uploadAudio, submitThought } from "./voice.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -11,6 +12,7 @@ const state = {
   selectedId: null,
   brain3d: null,
   brain2d: null,
+  recorder: null,
 };
 
 const NODE_COLORS = {
@@ -119,7 +121,8 @@ function bindUI() {
   $("search-close").onclick = () => toggleSearch(false);
   $("search-input").addEventListener("input", onSearch);
 
-  $("fab").onclick = toggleInputRow;
+  $("fab-mic").onclick = onMicClick;
+  $("fab-text").onclick = toggleInputRow;
   $("input-send").onclick = submitInput;
   $("input-field").addEventListener("keydown", (e) => {
     if (e.key === "Enter") submitInput();
@@ -196,9 +199,84 @@ async function submitInput() {
   if (!v) return;
   $("input-field").value = "";
   $("input-row").classList.add("hidden");
+  showToast("Парсю мысль…");
   try {
-    await api.createNode({ type: "task", title: v, status: "inbox" });
-  } catch (e) { alert(e.message); }
+    const result = await submitThought(v);
+    afterThoughtCreated(result);
+  } catch (e) {
+    hideToast();
+    alert(e.message);
+  }
+}
+
+// ---------- voice ----------
+
+function onMicClick() {
+  if (!state.recorder) {
+    state.recorder = new VoiceRecorder(onRecorderState);
+  }
+  if (state.recorder.state === "idle") {
+    state.recorder.start().catch((e) => {
+      alert("Микрофон недоступен: " + e.message);
+      state.recorder.reset();
+    });
+  } else if (state.recorder.state === "recording") {
+    stopAndProcess();
+  }
+}
+
+function onRecorderState(s) {
+  $("fab-mic").dataset.state = s;
+}
+
+async function stopAndProcess() {
+  try {
+    const blob = await state.recorder.stop();
+    showToast("Распознаю…");
+    const { text } = await uploadAudio(blob);
+    if (!text) {
+      hideToast();
+      state.recorder.reset();
+      showToast("Не расслышал — попробуй ещё раз", 2500);
+      return;
+    }
+    showToast("Парсю мысль…");
+    const result = await submitThought(text);
+    afterThoughtCreated(result);
+  } catch (e) {
+    hideToast();
+    alert("Ошибка: " + e.message);
+  } finally {
+    state.recorder.reset();
+  }
+}
+
+function afterThoughtCreated(result) {
+  hideToast();
+  if (result?.needs_review) {
+    showToast("Добавлено в Inbox: требует уточнения", 3000);
+  } else {
+    showToast("Готово", 1500);
+  }
+  if (result?.node?.id && state.brain3d) {
+    setTimeout(() => state.brain3d.setSearchHighlight([result.node.id]), 200);
+    setTimeout(() => state.brain3d.setSearchHighlight(null), 3200);
+  }
+}
+
+// ---------- toast ----------
+
+let toastTimer = null;
+function showToast(msg, ttl) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.remove("hidden");
+  if (toastTimer) clearTimeout(toastTimer);
+  if (ttl) toastTimer = setTimeout(() => hideToast(), ttl);
+}
+function hideToast() {
+  $("toast").classList.add("hidden");
+  if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
 }
 
 // ---------- search ----------

@@ -123,6 +123,80 @@ def test_websocket_broadcast_on_mutation(client):
         assert msg == {"type": "graph_changed"}
 
 
+def test_thoughts_endpoint_creates_active_node_on_high_confidence(client, monkeypatch):
+    parsed = {
+        "type": "task", "title": "Сделать зарядку", "importance": 6,
+        "required_time_minutes": 15, "required_money": 0, "energy": "high",
+        "deadline": None, "tags": ["спорт"], "context": None,
+        "confidence": 0.9, "needs_clarification": False,
+        "raw_text": "сделать зарядку",
+    }
+    monkeypatch.setattr("brain.api.parse_thought", lambda text: parsed)
+
+    r = client.post("/api/thoughts", json={"text": "сделать зарядку"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["needs_review"] is False
+    assert body["node"]["status"] == "active"
+    assert body["node"]["title"] == "Сделать зарядку"
+    assert body["node"]["tags"] == ["спорт"]
+
+
+def test_thoughts_endpoint_low_confidence_goes_to_inbox(client, monkeypatch):
+    parsed = {
+        "type": "task", "title": "Что-то непонятное", "importance": 5,
+        "required_time_minutes": 30, "required_money": 0, "energy": None,
+        "deadline": None, "tags": [], "context": None,
+        "confidence": 0.3, "needs_clarification": True,
+        "raw_text": "эээ ну",
+    }
+    monkeypatch.setattr("brain.api.parse_thought", lambda text: parsed)
+
+    r = client.post("/api/thoughts", json={"text": "эээ ну"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["needs_review"] is True
+    assert body["node"]["status"] == "inbox"
+    assert "Требует уточнения" in body["node"]["context"]
+
+
+def test_thoughts_endpoint_rejects_empty(client):
+    r = client.post("/api/thoughts", json={"text": "   "})
+    assert r.status_code == 400
+
+
+def test_thoughts_endpoint_handles_parser_error(client, monkeypatch):
+    def boom(text):
+        raise RuntimeError("anthropic down")
+    monkeypatch.setattr("brain.api.parse_thought", boom)
+
+    r = client.post("/api/thoughts", json={"text": "hello"})
+    assert r.status_code == 502
+
+
+def test_voice_endpoint_returns_text(client, monkeypatch):
+    monkeypatch.setattr("brain.api.transcribe", lambda data, filename="audio.webm": "привет мир")
+    r = client.post(
+        "/api/voice",
+        files={"audio": ("test.webm", b"\x00\x01\x02", "audio/webm")},
+    )
+    assert r.status_code == 200
+    assert r.json() == {"text": "привет мир"}
+
+
+def test_voice_endpoint_503_when_unavailable(client, monkeypatch):
+    from brain.voice import VoiceUnavailableError
+    def boom(data, filename="audio.webm"):
+        raise VoiceUnavailableError("no backend")
+    monkeypatch.setattr("brain.api.transcribe", boom)
+
+    r = client.post(
+        "/api/voice",
+        files={"audio": ("test.webm", b"\x00\x01", "audio/webm")},
+    )
+    assert r.status_code == 503
+
+
 def test_persistence_across_app_instances(tmp_path):
     db = str(tmp_path / "brain.json")
     app1 = create_app(db_path=db)
