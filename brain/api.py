@@ -15,7 +15,14 @@ except ImportError:
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from brain.auth import (
+    BasicAuthMiddleware,
+    SessionStore,
+    credentials_from_env,
+    websocket_authorized,
+)
 from brain.coach import export_dashboard, get_questions
 from brain.graph import BrainGraph
 from brain.parser import parse_thought, parsed_to_node_fields
@@ -27,6 +34,16 @@ from brain.voice import VoiceUnavailableError, transcribe
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND_DIR = os.path.join(REPO_ROOT, "frontend")
 DEFAULT_DB = os.path.join(REPO_ROOT, "brain.json")
+
+
+def _resolve_db_path(explicit: str | None) -> str:
+    """Priority: explicit arg > STORAGE_PATH > BRAIN_DB (legacy) > DEFAULT_DB."""
+    return (
+        explicit
+        or os.environ.get("STORAGE_PATH")
+        or os.environ.get("BRAIN_DB")
+        or DEFAULT_DB
+    )
 
 
 class ConnectionManager:
@@ -53,8 +70,10 @@ class ConnectionManager:
 
 
 def create_app(db_path: str | None = None) -> FastAPI:
-    storage = Storage(db_path or os.environ.get("BRAIN_DB", DEFAULT_DB))
+    storage = Storage(_resolve_db_path(db_path))
     state: dict[str, Any] = {}
+    sessions = SessionStore()
+    state["sessions"] = sessions
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -67,6 +86,25 @@ def create_app(db_path: str | None = None) -> FastAPI:
             pass
 
     app = FastAPI(lifespan=lifespan, title="second-brain-graph")
+
+    # ---------- middleware (trusted hosts → auth) ----------
+
+    allowed_hosts_env = os.environ.get("ALLOWED_HOSTS", "*").strip()
+    if allowed_hosts_env and allowed_hosts_env != "*":
+        hosts = [h.strip() for h in allowed_hosts_env.split(",") if h.strip()]
+        if hosts:
+            app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
+
+    username, password_hash = credentials_from_env()
+    auth_enabled = bool(username and password_hash)
+    if auth_enabled:
+        app.add_middleware(
+            BasicAuthMiddleware,
+            username=username,
+            password_hash=password_hash,
+            sessions=sessions,
+        )
+    state["auth_enabled"] = auth_enabled
 
     def g() -> BrainGraph:
         return state["graph"]
@@ -228,6 +266,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.websocket("/ws")
     async def websocket_endpoint(ws: WebSocket):
+        if state.get("auth_enabled") and not websocket_authorized(ws, sessions):
+            await ws.close(code=1008)
+            return
         await state["manager"].connect(ws)
         try:
             while True:
