@@ -16,6 +16,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, W
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from brain.coach import export_dashboard, get_questions
 from brain.graph import BrainGraph
 from brain.parser import parse_thought, parsed_to_node_fields
 from brain.storage import Storage
@@ -174,6 +175,19 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @app.get("/api/audit")
     async def audit(limit: int = 100):
         return g().get_audit_log(limit=limit)
+
+    # ---------- coach ----------
+
+    @app.get("/api/coach/dashboard")
+    async def coach_dashboard():
+        return export_dashboard(g())
+
+    @app.post("/api/coach")
+    async def coach():
+        try:
+            return get_questions(g())
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"coach failed: {e}")
 
     # ---------- voice + parser ----------
 

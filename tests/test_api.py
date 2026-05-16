@@ -197,6 +197,37 @@ def test_voice_endpoint_503_when_unavailable(client, monkeypatch):
     assert r.status_code == 503
 
 
+def test_coach_endpoint(client, monkeypatch):
+    qs = ["Сколько энергии?", "Что самое важное?", "Что мешает?"]
+    monkeypatch.setattr(
+        "brain.api.get_questions",
+        lambda graph: {"questions": qs, "dashboard": {"total_active": 0}},
+    )
+    r = client.post("/api/coach")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["questions"] == qs
+
+
+def test_coach_endpoint_502_on_failure(client, monkeypatch):
+    def boom(graph):
+        raise RuntimeError("anthropic offline")
+    monkeypatch.setattr("brain.api.get_questions", boom)
+    r = client.post("/api/coach")
+    assert r.status_code == 502
+
+
+def test_coach_dashboard_endpoint(client):
+    client.post("/api/nodes", json={"type": "task", "title": "x", "status": "active"})
+    r = client.get("/api/coach/dashboard")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total_active"] == 1
+    assert "actionable" in body
+    assert "inbox" in body
+    assert "recent_done" in body
+
+
 def test_persistence_across_app_instances(tmp_path):
     db = str(tmp_path / "brain.json")
     app1 = create_app(db_path=db)

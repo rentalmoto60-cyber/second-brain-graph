@@ -101,6 +101,70 @@ body { overflow: hidden; }
   padding: 12px 16px 80px;
   overflow-y: auto;
 }
+.coach-btn {
+  width: 100%; padding: 10px 14px; margin-bottom: 12px;
+  background: linear-gradient(135deg, #7F77DD 0%, #5DCAA5 100%);
+  color: #0a0e13; font-weight: 600; font-size: 13px;
+  border: none; border-radius: 10px; cursor: pointer;
+  letter-spacing: 0.02em;
+  box-shadow: 0 4px 14px rgba(127,119,221,0.25);
+}
+.coach-btn:active { transform: scale(0.99); }
+
+/* Coach modal */
+.coach-modal {
+  position: fixed; inset: 0; z-index: 90;
+  background: rgba(6, 8, 12, 0.7); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.coach-card {
+  width: 100%; max-width: 480px;
+  background: var(--bg-soft); border: 1px solid var(--border);
+  border-radius: 16px; padding: 20px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  max-height: 80vh; overflow-y: auto;
+}
+.coach-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 14px;
+}
+.coach-title {
+  font-size: 11px; letter-spacing: 0.1em; color: var(--fg-mute);
+  text-transform: uppercase;
+}
+.coach-loading {
+  padding: 24px 8px; text-align: center; color: var(--fg-mute); font-size: 14px;
+}
+.coach-questions {
+  list-style: none; padding: 0; margin: 0 0 16px;
+  counter-reset: q;
+}
+.coach-questions li {
+  position: relative; padding: 14px 14px 14px 44px;
+  margin-bottom: 8px; background: var(--bg-elev);
+  border-radius: 10px; line-height: 1.45; font-size: 15px;
+  counter-increment: q;
+}
+.coach-questions li::before {
+  content: counter(q);
+  position: absolute; left: 14px; top: 14px;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent); color: #0a0e13;
+  font-size: 12px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+}
+.coach-actions { display: flex; gap: 8px; }
+.coach-error {
+  color: var(--danger); font-size: 13px; padding: 12px; text-align: center;
+}
+#coach-mic[data-state="recording"] {
+  background: var(--danger); color: #fff; border-color: var(--danger);
+  animation: pulse-record 1s ease-in-out infinite;
+}
+#coach-mic[data-state="processing"] { color: var(--fg-mute); pointer-events: none; }
+#coach-mic[data-state="processing"] .mic-glyph { animation: spin 0.9s linear infinite; display: inline-block; }
+
 .inbox-row { margin-bottom: 8px; }
 .inbox-pill {
   background: var(--bg-elev); color: var(--fg); border: 1px solid var(--border);

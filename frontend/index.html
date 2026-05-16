@@ -62,9 +62,29 @@
         <span id="inbox-count">0</span> в Inbox
       </button>
     </div>
+    <button id="coach-btn" class="coach-btn">Позвать коуча</button>
     <div class="panel-title">СЕЙЧАС СДЕЛАТЬ</div>
     <ul id="actionable-list" class="actionable-list"></ul>
   </section>
+
+  <!-- Coach modal -->
+  <div id="coach-modal" class="coach-modal hidden">
+    <div class="coach-card">
+      <div class="coach-header">
+        <span class="coach-title">Коуч спрашивает</span>
+        <button id="coach-close" class="icon-btn">✕</button>
+      </div>
+      <div id="coach-loading" class="coach-loading">Думаю над твоим графом…</div>
+      <ol id="coach-questions" class="coach-questions hidden"></ol>
+      <div id="coach-actions" class="coach-actions hidden">
+        <button id="coach-mic" class="btn" data-state="idle">
+          <span class="mic-glyph">🎤</span> <span id="coach-mic-label">Записать ответ голосом</span>
+        </button>
+        <button id="coach-dismiss" class="btn">Закрыть</button>
+      </div>
+      <div id="coach-error" class="coach-error hidden"></div>
+    </div>
+  </div>
 
   <!-- Inbox list (collapsible) -->
   <div id="inbox-panel" class="inbox-panel hidden">

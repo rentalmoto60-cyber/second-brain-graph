@@ -3,6 +3,7 @@ import { Brain3D } from "./brain3d.js";
 import { Brain2D } from "./brain2d.js";
 import { runSplash } from "./splash.js";
 import { VoiceRecorder, uploadAudio, submitThought } from "./voice.js";
+import { openCoach, closeCoach, toggleCoachMic } from "./coach.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -131,6 +132,11 @@ function bindUI() {
 
   $("inbox-toggle").onclick = openInbox;
   $("inbox-close").onclick = closeInbox;
+
+  $("coach-btn").onclick = openCoach;
+  $("coach-close").onclick = closeCoach;
+  $("coach-dismiss").onclick = closeCoach;
+  $("coach-mic").onclick = toggleCoachMic;
 
   $("sheet-close").onclick = closeSheet;
   $("sheet-save").onclick  = saveSheet;
