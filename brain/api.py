@@ -1,0 +1,186 @@
+"""FastAPI app: REST + WebSocket on top of BrainGraph."""
+from __future__ import annotations
+
+import os
+from contextlib import asynccontextmanager
+from typing import Any
+
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+from brain.graph import BrainGraph
+from brain.storage import Storage
+from brain.visualizer import export_graph
+
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FRONTEND_DIR = os.path.join(REPO_ROOT, "frontend")
+DEFAULT_DB = os.path.join(REPO_ROOT, "brain.json")
+
+
+class ConnectionManager:
+    def __init__(self) -> None:
+        self.active: list[WebSocket] = []
+
+    async def connect(self, ws: WebSocket) -> None:
+        await ws.accept()
+        self.active.append(ws)
+
+    def disconnect(self, ws: WebSocket) -> None:
+        if ws in self.active:
+            self.active.remove(ws)
+
+    async def broadcast(self, message: dict) -> None:
+        stale: list[WebSocket] = []
+        for ws in self.active:
+            try:
+                await ws.send_json(message)
+            except Exception:
+                stale.append(ws)
+        for ws in stale:
+            self.disconnect(ws)
+
+
+def create_app(db_path: str | None = None) -> FastAPI:
+    storage = Storage(db_path or os.environ.get("BRAIN_DB", DEFAULT_DB))
+    state: dict[str, Any] = {}
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        state["graph"] = BrainGraph.load(storage)
+        state["manager"] = ConnectionManager()
+        yield
+        try:
+            state["graph"].save()
+        except Exception:
+            pass
+
+    app = FastAPI(lifespan=lifespan, title="second-brain-graph")
+
+    def g() -> BrainGraph:
+        return state["graph"]
+
+    async def notify() -> None:
+        await state["manager"].broadcast({"type": "graph_changed"})
+
+    # ---------- static & index ----------
+
+    @app.get("/")
+    async def index():
+        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+
+    if os.path.isdir(FRONTEND_DIR):
+        app.mount(
+            "/static",
+            StaticFiles(directory=FRONTEND_DIR),
+            name="static",
+        )
+
+    # ---------- REST ----------
+
+    @app.get("/api/graph")
+    async def get_graph():
+        return export_graph(g())
+
+    @app.post("/api/nodes")
+    async def create_node(payload: dict):
+        node_type = payload.pop("type", "task")
+        try:
+            nid = g().add_node(node_type, **payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        g().save()
+        await notify()
+        return g().get_node(nid)
+
+    @app.patch("/api/nodes/{node_id}")
+    async def patch_node(node_id: str, payload: dict):
+        try:
+            g().update_node(node_id, **payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        g().save()
+        await notify()
+        return g().get_node(node_id)
+
+    @app.delete("/api/nodes/{node_id}")
+    async def delete_node(node_id: str):
+        try:
+            g().soft_delete(node_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        g().save()
+        await notify()
+        return {"ok": True}
+
+    @app.post("/api/nodes/{node_id}/restore")
+    async def restore_node(node_id: str):
+        try:
+            g().restore(node_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        g().save()
+        await notify()
+        return g().get_node(node_id)
+
+    @app.post("/api/edges")
+    async def create_edge(payload: dict):
+        try:
+            g().add_edge(payload["from"], payload["to"], payload["type"])
+        except KeyError as e:
+            raise HTTPException(status_code=400, detail=f"missing field: {e}")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        g().save()
+        await notify()
+        return {"ok": True}
+
+    @app.delete("/api/edges")
+    async def delete_edge(payload: dict):
+        try:
+            g().remove_edge(payload["from"], payload["to"], payload["type"])
+        except KeyError as e:
+            raise HTTPException(status_code=400, detail=f"missing field: {e}")
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        g().save()
+        await notify()
+        return {"ok": True}
+
+    @app.get("/api/actionable")
+    async def actionable(free_time: int | None = None, strict: bool = False):
+        return g().get_actionable(free_time_minutes=free_time, strict_time_filter=strict)
+
+    @app.post("/api/undo")
+    async def undo():
+        try:
+            g().undo_last_action()
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        g().save()
+        await notify()
+        return {"ok": True}
+
+    @app.get("/api/audit")
+    async def audit(limit: int = 100):
+        return g().get_audit_log(limit=limit)
+
+    # ---------- WebSocket ----------
+
+    @app.websocket("/ws")
+    async def websocket_endpoint(ws: WebSocket):
+        await state["manager"].connect(ws)
+        try:
+            while True:
+                # we don't expect inbound messages; keep the socket open
+                await ws.receive_text()
+        except WebSocketDisconnect:
+            state["manager"].disconnect(ws)
+        except Exception:
+            state["manager"].disconnect(ws)
+
+    return app
+
+
+app = create_app()

@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Second Brain</title>
+  <link rel="stylesheet" href="/static/css/main.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.27.0/dist/cytoscape.min.js" defer></script>
+</head>
+<body>
+  <!-- Splash -->
+  <div id="splash" class="splash">
+    <canvas id="splash-canvas"></canvas>
+  </div>
+
+  <!-- Top bar -->
+  <header id="topbar" class="topbar">
+    <div class="counter"><span id="node-count">0</span> мыслей</div>
+    <div class="actions">
+      <button id="btn-search" class="icon-btn" title="Поиск">🔍</button>
+      <div class="mode-toggle">
+        <button id="btn-2d" class="mode-btn">2D</button>
+        <button id="btn-3d" class="mode-btn active">3D</button>
+      </div>
+      <button id="btn-settings" class="icon-btn" title="Настройки">⚙</button>
+    </div>
+  </header>
+
+  <!-- Search input -->
+  <div id="search-bar" class="search-bar hidden">
+    <input id="search-input" type="text" placeholder="Поиск по мыслям…" />
+    <button id="search-close" class="icon-btn">✕</button>
+  </div>
+
+  <!-- Mini-map -->
+  <div id="minimap" class="minimap hidden">
+    <canvas id="minimap-canvas" width="70" height="100"></canvas>
+    <div class="minimap-label">ты здесь</div>
+  </div>
+
+  <!-- 3D / 2D canvas -->
+  <main id="stage" class="stage">
+    <div id="canvas-3d" class="canvas-host"></div>
+    <div id="canvas-2d" class="canvas-host hidden"></div>
+    <div id="empty-hint" class="empty-hint hidden">
+      Нажми <b>+</b> и расскажи свою первую мысль
+    </div>
+  </main>
+
+  <!-- Bottom panel -->
+  <section id="bottom-panel" class="bottom-panel">
+    <div id="inbox-row" class="inbox-row hidden">
+      <button id="inbox-toggle" class="inbox-pill">
+        <span id="inbox-count">0</span> в Inbox
+      </button>
+    </div>
+    <div class="panel-title">СЕЙЧАС СДЕЛАТЬ</div>
+    <ul id="actionable-list" class="actionable-list"></ul>
+  </section>
+
+  <!-- Inbox list (collapsible) -->
+  <div id="inbox-panel" class="inbox-panel hidden">
+    <div class="inbox-header">Inbox <button id="inbox-close" class="icon-btn">✕</button></div>
+    <ul id="inbox-list" class="inbox-list"></ul>
+  </div>
+
+  <!-- FAB -->
+  <button id="fab" class="fab" title="Добавить мысль">＋</button>
+
+  <!-- Text input row -->
+  <div id="input-row" class="input-row hidden">
+    <input id="input-field" type="text" placeholder="Что у тебя в голове?" />
+    <button id="input-send" class="send-btn">→</button>
+  </div>
+
+  <!-- Node card sheet -->
+  <div id="sheet" class="sheet hidden">
+    <div class="sheet-header">
+      <span id="sheet-type" class="badge">task</span>
+      <button id="sheet-close" class="icon-btn">✕</button>
+    </div>
+    <input id="sheet-title" class="sheet-title" />
+    <div class="sheet-grid">
+      <label>Status
+        <select id="sheet-status">
+          <option value="inbox">inbox</option>
+          <option value="active">active</option>
+          <option value="waiting">waiting</option>
+          <option value="done">done</option>
+          <option value="deleted">deleted</option>
+        </select>
+      </label>
+      <label>Importance <span id="sheet-importance-val">5</span>
+        <input id="sheet-importance" type="range" min="1" max="10" value="5" />
+      </label>
+      <label>Energy
+        <select id="sheet-energy">
+          <option value="">—</option>
+          <option value="low">low</option>
+          <option value="medium">medium</option>
+          <option value="high">high</option>
+        </select>
+      </label>
+      <label>Время (мин)
+        <input id="sheet-time" type="number" min="0" />
+      </label>
+      <label>Деньги
+        <input id="sheet-money" type="number" min="0" step="0.01" />
+      </label>
+      <label>Дедлайн
+        <input id="sheet-deadline" type="datetime-local" />
+      </label>
+    </div>
+    <label class="full">Tags
+      <input id="sheet-tags" type="text" placeholder="через запятую" />
+    </label>
+    <div class="sheet-buttons">
+      <button id="sheet-save" class="btn primary">Сохранить</button>
+      <button id="sheet-done" class="btn">Готово</button>
+      <button id="sheet-delete" class="btn danger">Удалить</button>
+    </div>
+  </div>
+
+  <!-- Long-press context menu -->
+  <div id="ctxmenu" class="ctxmenu hidden">
+    <button data-action="done">Готово</button>
+    <button data-action="waiting">В waiting</button>
+    <button data-action="delete">Удалить</button>
+  </div>
+
+  <script type="module" src="/static/js/main.js"></script>
+</body>
+</html>

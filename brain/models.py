@@ -90,6 +90,13 @@ def validate_task_payload(payload: dict) -> None:
         if not _is_iso_datetime(payload["deadline"]):
             raise ValueError("deadline must be an ISO 8601 datetime string or None")
 
+    if "tags" in payload and payload["tags"] is not None:
+        tags = payload["tags"]
+        if not isinstance(tags, list) or not all(
+            isinstance(t, str) and t.strip() for t in tags
+        ):
+            raise ValueError("tags must be a list of non-empty strings")
+
 
 TASK_DEFAULTS = {
     "status": Status.INBOX.value,
@@ -99,6 +106,7 @@ TASK_DEFAULTS = {
     "energy": None,
     "context": None,
     "deadline": None,
+    "tags": [],
 }
 
 IMMUTABLE_NODE_FIELDS = {"id", "created_at", "type"}
