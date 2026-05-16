@@ -19,3 +19,6 @@ def _hermetic_env(monkeypatch):
         "ANTHROPIC_API_KEY",
     ):
         monkeypatch.delenv(var, raising=False)
+    # Suppress the first-run demo seed so the existing test suite keeps
+    # observing the empty graph it was written against.
+    monkeypatch.setenv("SEED_DEMO_NODES", "0")

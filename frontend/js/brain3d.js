@@ -66,7 +66,7 @@ export class Brain3D {
     this._setupInteraction();
     this._onResize = this._onResize.bind(this);
     window.addEventListener("resize", this._onResize);
-    this._onResize();
+    this._initialSize();
 
     this.onNodeClick = null;       // (id) => void
     this.onNodeLongPress = null;   // (id, clientX, clientY) => void
@@ -435,9 +435,26 @@ export class Brain3D {
   _onResize() {
     const w = this.host.clientWidth, h = this.host.clientHeight;
     if (!w || !h) return;
-    this.renderer.setSize(w, h, false);
+    // updateStyle=true so the <canvas> element fills the host visually,
+    // not just the WebGL backbuffer.
+    this.renderer.setSize(w, h, true);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+  }
+
+  // Container may not be laid out yet at construction time (esp. if the
+  // splash overlay is still mounted). Retry on rAF until we get real
+  // dimensions, then resize.
+  _initialSize(attempt = 0) {
+    if (this.host.clientWidth && this.host.clientHeight) {
+      this._onResize();
+      return;
+    }
+    if (attempt > 30) {
+      this._onResize();  // last-ditch
+      return;
+    }
+    requestAnimationFrame(() => this._initialSize(attempt + 1));
   }
 
   _tick() {
