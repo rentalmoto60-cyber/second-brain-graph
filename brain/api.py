@@ -26,6 +26,7 @@ from brain.auth import (
 from brain.coach import export_dashboard, get_questions
 from brain.graph import BrainGraph
 from brain.parser import parse_thought, parsed_to_node_fields
+from brain.seed import seed_demo_nodes
 from brain.storage import Storage
 from brain.visualizer import export_graph
 from brain.voice import VoiceUnavailableError, transcribe
@@ -78,6 +79,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         state["graph"] = BrainGraph.load(storage)
+        seed_demo_nodes(state["graph"])
         state["manager"] = ConnectionManager()
         yield
         try:
