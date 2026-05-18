@@ -250,7 +250,8 @@ async function submitInput() {
 }
 
 // Single entry point used by both text and voice. Routes through Gemini
-// when available; otherwise creates a plain inbox node from the text.
+// when available; falls back to a plain inbox node if AI is disabled or
+// the AI call fails (bad key, rate limit, transient network).
 async function createFromText(text) {
   if (state.caps?.parser) {
     showToast("Парсю мысль…");
@@ -259,13 +260,14 @@ async function createFromText(text) {
       afterThoughtCreated(result);
       return;
     } catch (e) {
-      hideToast();
-      alert(e.message);
-      return;
+      // AI failed — don't block the user; fall through to direct create.
+      console.warn("parser failed, falling back to direct create:", e.message);
+      showToast("AI недоступен, сохраняю как inbox…", 2000);
     }
+  } else {
+    showToast("Сохраняю…");
   }
 
-  showToast("Сохраняю…");
   try {
     const title = text.length > 80 ? text.slice(0, 77) + "…" : text;
     const node = await api.createNode({
