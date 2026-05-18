@@ -3,7 +3,7 @@ import os
 
 # Gemini model used by brain/parser.py and brain/coach.py.
 # Override via the GEMINI_MODEL env var (e.g. "gemini-2.5-flash").
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
 
 
 PRIORITY_WEIGHTS = {
