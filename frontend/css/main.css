@@ -213,6 +213,17 @@ body { overflow: hidden; }
   transition: background 0.2s, transform 0.15s;
 }
 .fab:active { transform: scale(0.94); }
+.fab[disabled], .fab.disabled {
+  background: var(--bg-elev); color: var(--fg-mute);
+  cursor: not-allowed; opacity: 0.55;
+  box-shadow: none;
+}
+.fab[disabled]:active, .fab.disabled:active { transform: none; }
+.coach-btn[disabled], .coach-btn.disabled {
+  background: var(--bg-elev); color: var(--fg-mute);
+  cursor: not-allowed; opacity: 0.6;
+  box-shadow: none;
+}
 .fab.fab-secondary {
   right: 92px; width: 44px; height: 44px;
   bottom: calc(30vh + 26px);

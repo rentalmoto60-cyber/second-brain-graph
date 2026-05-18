@@ -36,8 +36,48 @@ async function boot() {
   };
 
   bindUI();
+  await applyCapabilities();
   await refresh();
   connectWS(refresh);
+}
+
+async function applyCapabilities() {
+  let caps;
+  try {
+    const res = await fetch("/api/capabilities");
+    caps = await res.json();
+  } catch {
+    caps = { parser: false, coach: false, voice: false };
+  }
+  state.caps = caps;
+
+  const TOOLTIP = "Требуется API ключ";
+
+  // Mic needs both transcription (voice) AND parser (to create the node).
+  setButtonAvailable($("fab-mic"), caps.voice && caps.parser, TOOLTIP);
+
+  // Text fallback runs through the parser.
+  setButtonAvailable($("fab-text"), caps.parser, TOOLTIP);
+
+  // Coach is Gemini-only.
+  setButtonAvailable($("coach-btn"), caps.coach, TOOLTIP);
+
+  // Coach modal's "Записать ответ голосом" — same dual requirement as mic.
+  setButtonAvailable($("coach-mic"), caps.voice && caps.parser, TOOLTIP);
+}
+
+function setButtonAvailable(btn, ok, disabledTooltip) {
+  if (!btn) return;
+  if (ok) {
+    btn.removeAttribute("disabled");
+    btn.classList.remove("disabled");
+    btn.title = btn.dataset.titleEnabled || btn.title || "";
+  } else {
+    if (!btn.dataset.titleEnabled) btn.dataset.titleEnabled = btn.title || "";
+    btn.setAttribute("disabled", "disabled");
+    btn.classList.add("disabled");
+    btn.title = disabledTooltip;
+  }
 }
 
 // ---------- data ----------

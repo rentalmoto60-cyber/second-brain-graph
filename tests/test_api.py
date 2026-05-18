@@ -228,6 +228,55 @@ def test_coach_dashboard_endpoint(client):
     assert "recent_done" in body
 
 
+def test_capabilities_all_false_without_keys(client):
+    # The hermetic conftest fixture strips all keys.
+    r = client.get("/api/capabilities")
+    assert r.status_code == 200
+    body = r.json()
+    assert body == {"parser": False, "coach": False, "voice": False}
+
+
+def test_capabilities_with_gemini_key(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from brain.api import create_app
+
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-fake")
+    app = create_app(db_path=str(tmp_path / "brain.json"))
+    with TestClient(app) as c:
+        body = c.get("/api/capabilities").json()
+    assert body["parser"] is True
+    assert body["coach"] is True
+    assert body["voice"] is False  # no OPENAI_API_KEY / faster-whisper
+
+
+def test_capabilities_with_openai_key(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from brain.api import create_app
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-fake")
+    app = create_app(db_path=str(tmp_path / "brain.json"))
+    with TestClient(app) as c:
+        body = c.get("/api/capabilities").json()
+    assert body["parser"] is False
+    assert body["coach"] is False
+    assert body["voice"] is True
+
+
+def test_capabilities_with_both_keys(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from brain.api import create_app
+
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-fake")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-fake")
+    app = create_app(db_path=str(tmp_path / "brain.json"))
+    with TestClient(app) as c:
+        body = c.get("/api/capabilities").json()
+    assert body == {"parser": True, "coach": True, "voice": True}
+
+
 def test_persistence_across_app_instances(tmp_path):
     db = str(tmp_path / "brain.json")
     app1 = create_app(db_path=db)

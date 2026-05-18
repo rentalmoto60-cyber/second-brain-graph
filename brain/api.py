@@ -216,6 +216,26 @@ def create_app(db_path: str | None = None) -> FastAPI:
     async def audit(limit: int = 100):
         return g().get_audit_log(limit=limit)
 
+    @app.get("/api/capabilities")
+    async def capabilities():
+        """Which AI-backed endpoints are usable in the current environment.
+
+        The frontend reads this on load to disable buttons gracefully instead
+        of letting the user click into a 502.
+        """
+        has_gemini = bool(os.environ.get("GEMINI_API_KEY"))
+        has_openai = bool(os.environ.get("OPENAI_API_KEY"))
+        try:
+            import faster_whisper  # noqa: F401
+            has_local_whisper = True
+        except ImportError:
+            has_local_whisper = False
+        return {
+            "parser": has_gemini,
+            "coach": has_gemini,
+            "voice": has_openai or has_local_whisper,
+        }
+
     # ---------- coach ----------
 
     @app.get("/api/coach/dashboard")
