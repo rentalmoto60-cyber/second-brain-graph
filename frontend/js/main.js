@@ -51,19 +51,20 @@ async function applyCapabilities() {
   }
   state.caps = caps;
 
-  const TOOLTIP = "Требуется API ключ";
+  const VOICE_TIP = "Требуется ключ для распознавания речи";
+  const COACH_TIP = "Требуется GEMINI_API_KEY";
 
-  // Mic needs both transcription (voice) AND parser (to create the node).
-  setButtonAvailable($("fab-mic"), caps.voice && caps.parser, TOOLTIP);
+  // Mic needs transcription. Without a parser the transcribed text still
+  // lands as a plain inbox node — degraded but functional.
+  setButtonAvailable($("fab-mic"), caps.voice, VOICE_TIP);
+  setButtonAvailable($("coach-mic"), caps.voice, VOICE_TIP);
 
-  // Text fallback runs through the parser.
-  setButtonAvailable($("fab-text"), caps.parser, TOOLTIP);
+  // Text input always works — falls back to direct node creation without
+  // AI auto-fill when the parser is unavailable.
+  setButtonAvailable($("fab-text"), true);
 
-  // Coach is Gemini-only.
-  setButtonAvailable($("coach-btn"), caps.coach, TOOLTIP);
-
-  // Coach modal's "Записать ответ голосом" — same dual requirement as mic.
-  setButtonAvailable($("coach-mic"), caps.voice && caps.parser, TOOLTIP);
+  // Coach is the only feature that requires AI to be meaningful.
+  setButtonAvailable($("coach-btn"), caps.coach, COACH_TIP);
 }
 
 function setButtonAvailable(btn, ok, disabledTooltip) {
@@ -245,10 +246,35 @@ async function submitInput() {
   if (!v) return;
   $("input-field").value = "";
   $("input-row").classList.add("hidden");
-  showToast("Парсю мысль…");
+  await createFromText(v);
+}
+
+// Single entry point used by both text and voice. Routes through Gemini
+// when available; otherwise creates a plain inbox node from the text.
+async function createFromText(text) {
+  if (state.caps?.parser) {
+    showToast("Парсю мысль…");
+    try {
+      const result = await submitThought(text);
+      afterThoughtCreated(result);
+      return;
+    } catch (e) {
+      hideToast();
+      alert(e.message);
+      return;
+    }
+  }
+
+  showToast("Сохраняю…");
   try {
-    const result = await submitThought(v);
-    afterThoughtCreated(result);
+    const title = text.length > 80 ? text.slice(0, 77) + "…" : text;
+    const node = await api.createNode({
+      type: "task",
+      title,
+      status: "inbox",
+      context: text.length > 80 ? text : null,
+    });
+    afterThoughtCreated({ node, parsed: null, needs_review: true });
   } catch (e) {
     hideToast();
     alert(e.message);
@@ -286,9 +312,7 @@ async function stopAndProcess() {
       showToast("Не расслышал — попробуй ещё раз", 2500);
       return;
     }
-    showToast("Парсю мысль…");
-    const result = await submitThought(text);
-    afterThoughtCreated(result);
+    await createFromText(text);
   } catch (e) {
     hideToast();
     alert("Ошибка: " + e.message);
