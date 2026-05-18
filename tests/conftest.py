@@ -16,7 +16,7 @@ def _hermetic_env(monkeypatch):
         "STORAGE_PATH",
         "BRAIN_DB",
         "OPENAI_API_KEY",
-        "ANTHROPIC_API_KEY",
+        "GEMINI_API_KEY",
     ):
         monkeypatch.delenv(var, raising=False)
     # Suppress the first-run demo seed so the existing test suite keeps

@@ -48,7 +48,6 @@ def test_dashboard_counts_by_type_and_status(graph):
     assert d["by_type"]["idea"] == 1
     assert d["by_status"]["active"] == 2
     assert d["by_status"]["inbox"] == 1
-    # deleted node excluded
     assert "deleted" not in d["by_status"]
 
 
@@ -59,7 +58,6 @@ def test_dashboard_actionable_capped_and_summarized(graph):
     d = export_dashboard(graph)
     assert len(d["actionable"]) == DASHBOARD_LIMIT
     for n in d["actionable"]:
-        # summary fields only — no audit log / context leak
         assert set(n.keys()) >= {"id", "title", "type", "importance"}
 
 
@@ -70,17 +68,14 @@ def test_dashboard_inbox_capped_and_newest_first(graph):
     ]
     d = export_dashboard(graph)
     assert len(d["inbox"]) == DASHBOARD_LIMIT
-    # most recently created should be first
     assert d["inbox"][0]["id"] == ids[-1]
 
 
-def test_dashboard_recent_done_filters_by_time_window(graph, monkeypatch):
+def test_dashboard_recent_done_filters_by_time_window(graph):
     a = graph.add_node(NodeType.TASK, title="recent", status="active")
     b = graph.add_node(NodeType.TASK, title="old", status="active")
 
-    # Mark `a` done now
     graph.update_node(a, status="done")
-    # Mark `b` done, then rewrite the audit timestamp to be 30d ago
     graph.update_node(b, status="done")
     old = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
     for entry in graph._audit_log:
@@ -95,14 +90,13 @@ def test_dashboard_recent_done_filters_by_time_window(graph, monkeypatch):
 
 def test_dashboard_recent_done_ignores_non_done_updates(graph):
     nid = graph.add_node(NodeType.TASK, title="x", status="active")
-    graph.update_node(nid, title="renamed")  # not a status→done change
+    graph.update_node(nid, title="renamed")
     d = export_dashboard(graph)
     assert d["recent_done"] == []
 
 
 def test_dashboard_recent_done_dedupes_done_to_done(graph):
     nid = graph.add_node(NodeType.TASK, title="x", status="done")
-    # already done, then "completing" again should not register
     graph.update_node(nid, status="done")
     d = export_dashboard(graph)
     assert d["recent_done"] == []
@@ -111,45 +105,42 @@ def test_dashboard_recent_done_dedupes_done_to_done(graph):
 # ---------- get_questions ----------
 
 def _fake_response(payload):
-    return SimpleNamespace(
-        content=[SimpleNamespace(type="text", text=json.dumps(payload, ensure_ascii=False))]
-    )
+    return SimpleNamespace(text=json.dumps(payload, ensure_ascii=False))
+
+
+def _fake_client(payload):
+    client = MagicMock()
+    client.models.generate_content.return_value = _fake_response(payload)
+    return client
 
 
 def test_get_questions_returns_three(graph):
     graph.add_node(NodeType.TASK, title="купить хлеб", status="active", importance=7)
     questions = ["энергия?", "что важнее всего?", "что мешает?"]
-    client = MagicMock()
-    client.messages.create.return_value = _fake_response({"questions": questions})
+    client = _fake_client({"questions": questions})
 
     result = get_questions(graph, client=client)
     assert result["questions"] == questions
     assert "dashboard" in result
     assert result["dashboard"]["total_active"] == 1
 
-    # The API call carries the schema and the cached system prompt
-    args = client.messages.create.call_args.kwargs
-    assert args["output_config"]["format"]["type"] == "json_schema"
-    assert args["system"][0]["cache_control"] == {"type": "ephemeral"}
-    assert "GTD-коуч" in args["system"][0]["text"]
-    # Dashboard JSON is the user message
-    user_payload = json.loads(args["messages"][0]["content"])
-    assert "actionable" in user_payload
+    args = client.models.generate_content.call_args.kwargs
+    assert args["model"].startswith("gemini-")
+    assert args["config"]["response_mime_type"] == "application/json"
+    assert "GTD-коуч" in args["contents"]
+    # Dashboard JSON is embedded in the prompt body
+    assert "купить хлеб" in args["contents"]
 
 
 def test_get_questions_pads_when_fewer_than_three(graph):
-    client = MagicMock()
-    client.messages.create.return_value = _fake_response({"questions": ["только один"]})
+    client = _fake_client({"questions": ["только один"]})
     result = get_questions(graph, client=client)
     assert len(result["questions"]) == 3
     assert result["questions"][0] == "только один"
 
 
 def test_get_questions_trims_when_more_than_three(graph):
-    client = MagicMock()
-    client.messages.create.return_value = _fake_response(
-        {"questions": ["a", "b", "c", "d", "e"]}
-    )
+    client = _fake_client({"questions": ["a", "b", "c", "d", "e"]})
     result = get_questions(graph, client=client)
     assert result["questions"] == ["a", "b", "c"]
 
@@ -159,11 +150,14 @@ def test_get_questions_does_not_mutate_graph(graph):
     before = dict(graph.get_node(nid))
     audit_len = len(graph.get_audit_log(limit=1000))
 
-    client = MagicMock()
-    client.messages.create.return_value = _fake_response(
-        {"questions": ["q1", "q2", "q3"]}
-    )
+    client = _fake_client({"questions": ["q1", "q2", "q3"]})
     get_questions(graph, client=client)
 
     assert graph.get_node(nid) == before
     assert len(graph.get_audit_log(limit=1000)) == audit_len
+
+
+def test_get_questions_raises_without_api_key(graph, monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
+        get_questions(graph)  # no client → real factory runs → fails fast

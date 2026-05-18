@@ -8,14 +8,12 @@ from brain.parser import parse_thought, parsed_to_node_fields
 
 
 def _fake_response(payload: dict):
-    return SimpleNamespace(
-        content=[SimpleNamespace(type="text", text=json.dumps(payload, ensure_ascii=False))]
-    )
+    return SimpleNamespace(text=json.dumps(payload, ensure_ascii=False))
 
 
 def _fake_client(payload: dict):
     client = MagicMock()
-    client.messages.create.return_value = _fake_response(payload)
+    client.models.generate_content.return_value = _fake_response(payload)
     return client
 
 
@@ -31,20 +29,22 @@ def test_parse_thought_passes_text_and_returns_dict():
     result = parse_thought("надо сделать зарядку", client=client)
     assert result == payload
 
-    args = client.messages.create.call_args.kwargs
-    assert args["model"].startswith("claude-")
-    assert args["messages"][0]["content"] == "надо сделать зарядку"
-    sys = args["system"][0]
-    assert sys["cache_control"] == {"type": "ephemeral"}
-    assert "ТОЛЬКО валидный JSON" in sys["text"] or "ТОЛЬКО" in sys["text"]
-    fmt = args["output_config"]["format"]
-    assert fmt["type"] == "json_schema"
-    assert "confidence" in fmt["schema"]["properties"]
+    args = client.models.generate_content.call_args.kwargs
+    assert args["model"].startswith("gemini-")
+    assert "надо сделать зарядку" in args["contents"]
+    assert "ТОЛЬКО" in args["contents"]  # system prompt is concatenated in
+    assert args["config"]["response_mime_type"] == "application/json"
 
 
 def test_parse_thought_rejects_empty():
     with pytest.raises(ValueError):
         parse_thought("   ", client=_fake_client({}))
+
+
+def test_parse_thought_raises_without_api_key(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
+        parse_thought("hello")  # no client → real factory runs → fails fast
 
 
 def test_high_confidence_goes_active():

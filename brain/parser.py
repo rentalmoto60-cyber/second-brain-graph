@@ -1,16 +1,13 @@
-"""Claude API parser: free-form Russian thought → structured node JSON."""
+"""Gemini parser: free-form Russian thought → structured node JSON."""
 from __future__ import annotations
 
 import json
 import os
 from typing import Any
 
-import anthropic
+from google import genai
 
-
-PARSER_MODEL = os.environ.get("PARSER_MODEL", "claude-sonnet-4-6")
-PARSER_MAX_TOKENS = 1024
-PARSER_TIMEOUT_SECONDS = 30.0
+from brain.config import GEMINI_MODEL
 
 
 SYSTEM_PROMPT = """Ты — парсер мыслей для системы «Второй мозг». Тебе дают сырой текст, надиктованный пользователем по-русски. Твоя задача — вернуть строго JSON со структурой узла.
@@ -32,64 +29,34 @@ SYSTEM_PROMPT = """Ты — парсер мыслей для системы «В
 Верни ТОЛЬКО валидный JSON, без markdown-обёрток, без пояснений."""
 
 
-PARSED_THOUGHT_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "type": {"type": "string", "enum": ["task", "idea", "project"]},
-        "title": {"type": "string"},
-        "importance": {"type": "integer", "enum": list(range(1, 11))},
-        "required_time_minutes": {"type": "integer"},
-        "required_money": {"type": "number"},
-        "energy": {"anyOf": [{"type": "string", "enum": ["low", "medium", "high"]}, {"type": "null"}]},
-        "deadline": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-        "tags": {"type": "array", "items": {"type": "string"}},
-        "context": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-        "confidence": {"type": "number"},
-        "needs_clarification": {"type": "boolean"},
-        "raw_text": {"type": "string"},
-    },
-    "required": [
-        "type", "title", "importance", "required_time_minutes", "required_money",
-        "energy", "deadline", "tags", "context", "confidence",
-        "needs_clarification", "raw_text",
-    ],
-    "additionalProperties": False,
-}
+def _make_client() -> genai.Client:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "GEMINI_API_KEY is not set. Get one at https://aistudio.google.com/apikey"
+        )
+    return genai.Client(api_key=api_key)
 
 
-def _make_client() -> anthropic.Anthropic:
-    return anthropic.Anthropic(timeout=PARSER_TIMEOUT_SECONDS)
-
-
-def parse_thought(text: str, *, client: anthropic.Anthropic | None = None) -> dict[str, Any]:
-    """Run a single Claude call and return the parsed-thought JSON dict.
+def parse_thought(text: str, *, client: genai.Client | None = None) -> dict[str, Any]:
+    """Run a single Gemini call and return the parsed-thought JSON dict.
 
     Raises:
         ValueError if `text` is empty.
-        anthropic.APIError on API failures.
+        RuntimeError if GEMINI_API_KEY is missing.
+        Underlying SDK errors propagate (treated as 502 by the API layer).
     """
     text = (text or "").strip()
     if not text:
         raise ValueError("text must be a non-empty string")
 
     client = client or _make_client()
-    response = client.messages.create(
-        model=PARSER_MODEL,
-        max_tokens=PARSER_MAX_TOKENS,
-        system=[
-            {
-                "type": "text",
-                "text": SYSTEM_PROMPT,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        messages=[{"role": "user", "content": text}],
-        output_config={
-            "format": {"type": "json_schema", "schema": PARSED_THOUGHT_SCHEMA}
-        },
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=f"{SYSTEM_PROMPT}\n\nТекст пользователя:\n{text}",
+        config={"response_mime_type": "application/json"},
     )
-    raw = next((b.text for b in response.content if b.type == "text"), "")
-    return json.loads(raw)
+    return json.loads(response.text)
 
 
 def parsed_to_node_fields(parsed: dict[str, Any]) -> tuple[str, dict[str, Any]]:

@@ -1,4 +1,4 @@
-"""GTD coach: snapshot the graph and ask Claude for 3 Socratic questions.
+"""GTD coach: snapshot the graph and ask Gemini for 3 Socratic questions.
 
 Read-only with respect to the graph — never mutates state.
 """
@@ -10,14 +10,12 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import anthropic
+from google import genai
 
+from brain.config import GEMINI_MODEL
 from brain.graph import BrainGraph
 
 
-COACH_MODEL = os.environ.get("COACH_MODEL", "claude-sonnet-4-6")
-COACH_MAX_TOKENS = 1024
-COACH_TIMEOUT_SECONDS = 30.0
 DASHBOARD_LIMIT = 10
 RECENT_DONE_DAYS = 7
 
@@ -34,17 +32,11 @@ SYSTEM_PROMPT = """Ты — GTD-коуч. Тебе показывают сост
 Верни ТОЛЬКО JSON со структурой {"questions": ["...", "...", "..."]} (ровно 3 строки), без markdown."""
 
 
-QUESTIONS_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "questions": {
-            "type": "array",
-            "items": {"type": "string"},
-        }
-    },
-    "required": ["questions"],
-    "additionalProperties": False,
-}
+DEFAULT_QUESTIONS = [
+    "Сколько у тебя сейчас энергии — низкая, средняя, высокая?",
+    "Какая задача из списка ощущается самой важной прямо сейчас?",
+    "Что мешает начать прямо сейчас — нет ясности, времени или энергии?",
+]
 
 
 def _summarize_node(n: dict) -> dict:
@@ -123,14 +115,19 @@ def export_dashboard(graph: BrainGraph, *, now: datetime | None = None) -> dict:
     }
 
 
-def _make_client() -> anthropic.Anthropic:
-    return anthropic.Anthropic(timeout=COACH_TIMEOUT_SECONDS)
+def _make_client() -> genai.Client:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "GEMINI_API_KEY is not set. Get one at https://aistudio.google.com/apikey"
+        )
+    return genai.Client(api_key=api_key)
 
 
 def get_questions(
-    graph: BrainGraph, *, client: anthropic.Anthropic | None = None
+    graph: BrainGraph, *, client: genai.Client | None = None
 ) -> dict[str, Any]:
-    """Ask Claude for 3 Socratic questions about the current dashboard.
+    """Ask Gemini for 3 Socratic questions about the current dashboard.
 
     Returns {"questions": [str, str, str], "dashboard": {...}}.
     """
@@ -138,30 +135,13 @@ def get_questions(
     payload = json.dumps(dashboard, ensure_ascii=False, sort_keys=True)
 
     client = client or _make_client()
-    response = client.messages.create(
-        model=COACH_MODEL,
-        max_tokens=COACH_MAX_TOKENS,
-        system=[
-            {
-                "type": "text",
-                "text": SYSTEM_PROMPT,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        messages=[{"role": "user", "content": payload}],
-        output_config={
-            "format": {"type": "json_schema", "schema": QUESTIONS_SCHEMA}
-        },
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=f"{SYSTEM_PROMPT}\n\nДашборд:\n{payload}",
+        config={"response_mime_type": "application/json"},
     )
-    raw = next((b.text for b in response.content if b.type == "text"), "")
-    parsed = json.loads(raw)
+    parsed = json.loads(response.text)
     questions = parsed.get("questions") or []
-    if len(questions) != 3:
-        # Coerce: pad with neutral asks or trim to 3.
-        defaults = [
-            "Сколько у тебя сейчас энергии — низкая, средняя, высокая?",
-            "Какая задача из списка ощущается самой важной прямо сейчас?",
-            "Что мешает начать прямо сейчас — нет ясности, времени или энергии?",
-        ]
-        questions = (list(questions) + defaults)[:3]
+    # Pad with defaults / trim to exactly 3 if Gemini misbehaves.
+    questions = (list(questions) + DEFAULT_QUESTIONS)[:3]
     return {"questions": questions, "dashboard": dashboard}
